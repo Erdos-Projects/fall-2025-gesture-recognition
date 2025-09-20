@@ -3,6 +3,9 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# Data directory
+data/
+
 # C extensions
 *.so
 
@@ -81,6 +84,9 @@ target/
 # IPython
 profile_default/
 ipython_config.py
+
+#data
+*.hdf5
 
 # pyenv
 #   For a library or package, you might want to ignore these files since the code is
