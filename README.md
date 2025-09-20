@@ -7,18 +7,20 @@ Identifying universal and personalized hand gesture patterns from surface electr
 ## To Do
 
 ### Feature extraction
+
+- [x] Load data and getting us started with FFT on timeseries
 - [ ] FFT on timeseries, see prevalent frequencies in the signal
-- [ ] 
-- [ ] 
+- [ ] something else
+- [ ] another thing
 
 ### Dimension Reduction
-- [ ] 
-- [ ]
-- [ ]
+- [ ] yet another
+- [ ] what about this?
+- [ ] who else?
 
 
 
-##References
+## References
 
 - Kaifosh, P., Reardon, T.R. & CTRL-labs at Reality Labs. A generic non-invasive neuromotor interface for human-computer interaction. Nature (2025). https://doi.org/10.1038/s41586-025-09255-w
 - Kaifosh, P., Reardon, T.R. & CTRL-labs at Reality Labs. A generic non-invasive neuromotor interface for human-computer interaction. (2025). GitHub repository, https://github.com/facebookresearch/generic-neuromotor-interface
