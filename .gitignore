@@ -3,6 +3,10 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# datadir
+data/
+*.hdf5
+
 # C extensions
 *.so
 
