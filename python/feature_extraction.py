@@ -191,9 +191,9 @@ def get_large_event_array(emg: np.array,
             # emg value, shifted, 0 is first large muscle movement around prompt time
             emg_trimmed[i,:,:] = emg_windowed[i,startl:stopl,:] 
             # zscore, shifted, 0 is first large muscle movement around prompt time
-        except Exception as e:
             zscore_trimmed[i,:,:] = zscore_windowed[i,startl:stopl,:] 
-            print('Event at end of the windowed area' , gesture, i)
+        except Exception as e:
+            print('\t\t\tEvent at end of the windowed area' , gesture, i)
             endofwindow = emg_windowed[i,startl:stopl,:].shape[0]
             emg_trimmed[i,:endofwindow,:] = emg_windowed[i,startl:stopl,:]
             zscore_trimmed[i,:endofwindow,:] = zscore_windowed[i,startl:stopl,:]
@@ -339,6 +339,7 @@ if __name__ == '__main__':
                                                show=False,
                                                savedir=None,
                                                file=file)
+            
             # Extract feature here
 
 
