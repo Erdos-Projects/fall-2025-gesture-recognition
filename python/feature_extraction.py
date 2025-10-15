@@ -1,21 +1,16 @@
 
 #!/usr/bin/env python3
 '''
-Python script to take concatenate .bin data for spike sorting through kilosort
+Python script to extract features from emg data
 
-Authors: Brian R. Mullen
-Date: 2024-09-09
+Authors: Brian R. Mullen, Sero Toriano Parel, Revati Jadhav, Carrie Clark, Philip Nelson
+Date: 2025-10-15
 
  
 Examples:
 
-1. Concatenate all subfolders found in the data directory
-python concatenate_data.py -i D:/Main/Data/File 
+python feature_extraction.py -i ../data/emg_data/ -sf
 
-2. Concatenate only the datasets indicated that are found in the data directory
-python concatenate_data.py -i D:/Main/Data/File -d 0 2 3 
-
-Saves concatenated data, ttl times, and data separation information
 '''
 
 import os
