@@ -1,0 +1,343 @@
+
+#!/usr/bin/env python3
+'''
+Python script to extract features from emg data
+
+Authors: Brian R. Mullen, Sero Toriano Parel, Revati Jadhav, Carrie Clark, Philip Nelson
+Date: 2025-10-15
+
+ 
+Examples:
+
+python feature_extraction.py -i ../data/emg_data/ -sf
+
+'''
+
+import os
+import glob
+import sys
+
+import pandas as pd
+import numpy as np
+
+from datetime import datetime
+import matplotlib.pyplot as plt
+
+# Import the data loader from the generic_neuromotor_interface package
+from generic_neuromotor_interface.explore_data.load import load_data
+
+
+
+def get_task_dataset_paths(task: str) -> list[str]:
+    # Only return files that contain the task name in their filename
+
+    folder = os.path.expanduser(DATA_FOLDER)
+    datasets = glob.glob(os.path.join(folder, '*.hdf5'))
+    
+    return [d for d in datasets if task in d]
+
+
+def get_gesture_prompt_times(prompts,
+                             timestamps):
+    '''
+    gets times each different stage was used
+
+    Arguments:
+        prompts: prompt information
+        timestamps: timestamps from experiment
+
+    Returns:
+       stage_labels: 1D array with gesture in time of when prompts were given
+    '''
+    gesture_labels = np.full_like(timestamps, '', dtype=object)
+    if not prompts.empty:
+        prompt_times = prompts['time'].values
+        prompt_names = prompts['name'].values
+        prompt_idx = 0
+        # For each sample, check if a gesture occurs at that timestamp
+        for i, t in enumerate(time):
+            while prompt_idx + 1 < len(prompt_times) and prompt_times[prompt_idx + 1] <= t:
+                prompt_idx += 1
+            if prompt_times[prompt_idx] == t:
+                gesture_labels[i] = prompt_names[prompt_idx]
+
+    return gesture_labels
+
+def get_gesture_stage_times(stages,
+                             timestamps):
+    '''
+    gets times each different stage was used
+
+    Arguments:
+        stages: stage information
+        timestamps: timestamps from experiment
+
+    Returns:
+       stage_labels: 1D array with stage in place of when it was used
+    '''
+
+    stage_labels = np.full_like(time, '', dtype=object)
+    if not stages.empty:
+        # For each sample, check if it falls within any stage interval
+        for i, t in enumerate(time):
+            for _, row in stages.iterrows():
+                if row['start'] <= t <= row['end']:
+                    stage_labels[i] = row['name']
+                    break
+
+    return stage_labels
+
+
+def get_zscore(emg, axis=0):
+    '''
+    make zscores based on emg data, normalizes the EMG signals
+
+    Arguments:
+        emg: emg data across 16 channels
+        axis: which axis of the array are normalized against
+
+    Returns:
+       zscore: data normalized to stdev (with mean=0)
+    '''
+    return (emg - np.mean(emg, axis=axis))/np.std(emg, axis=axis)
+
+
+def get_large_event_array(emg: np.array, 
+               gesture_name:str, 
+               gest_indices:int = None, 
+               sample_rate:float = 2000, 
+               lowend:float = -0.05,
+               window_size: np.array = np.array([-1,1]), 
+               trim_window:np.array= np.array([-0.01,.1]),
+               show: bool = False,
+               savedir: str = None,
+               file: str = None):
+
+    '''
+    Takes emg data and gesture indices to output an array of aligned and trimmed around the 
+    largest event dataset
+    
+    Arguments:
+        emg: emg data across 16 channels
+        gesutre_name: name of the gesture of the output array 
+        gest_indices: Index of when this gesture was prompted
+        sample_rate: sample rate of emg data
+        lowend: lowest temporal allowance to shift the event time
+        window_size: window to search for large event
+        trim_window: output array will be only this time frame, with 0 being the largest event
+        show: show the aligned plots of zscore and emg
+        savedir: directory of where you will save the file
+        file: file from which the data was extracted
+
+    Returns:
+       emg_trimmed: emg data aligned and trimmed 
+       zscore_trimmed: zscore data aligned and trimmed 
+       shifts: number of indices the prompt was shifted
+    '''
+
+    save = False
+    if savedir is not None:
+        save = True
+    
+    window_size = np.array(window_size)*sample_rate 
+    trim_window = np.array(trim_window)*sample_rate
+    shifts = np.zeros_like(gest_indices)
+
+    # time oif view window, with 0 at the event
+    time_rel = np.arange(window_size[0], window_size[1])/sample_rate 
+    lowcut = np.where(time_rel > lowend)[0][0]
+    emg_windowed = np.zeros((len(gest_indices), int(np.diff(window_size)[0]), emg.shape[1]))
+    # loop through waveforms of gestures
+    for i, index in enumerate(gest_indices): # loop through waveforms of gestures
+        start = int(window_size[0] + index) #non-shifted search window, 0 is prompt time
+        stop = int(window_size[1] + index)
+        emg_windowed[i,:,:] = emg[start:stop,:]
+
+    zscore_windowed = get_zscore(emg_windowed, axis=(0,1))
+    
+    zscore_trimmed = np.zeros((len(gest_indices), int(np.diff(trim_window)[0]), 
+                                emg.shape[1])) * np.nan
+    emg_trimmed = np.zeros_like(zscore_trimmed) * np.nan
+
+    for i, index in enumerate(gest_indices): # loop through waveforms of gestures
+        start = int(window_size[0] + index) #non-shifted search window, 0 is prompt time
+        stop = int(window_size[1] + index)
+    
+        # determine big event, independent of channel
+        try:# first event that reaches a zscore of 3 (3 * stdev)
+            large_event = np.where(np.max(zscore_windowed[i,lowcut:,:], axis=1) > 3)[0][0] 
+        except Exception as e:
+            try:
+                # else first event that reaches a zscore of 1.65, alpha=0.05
+                large_event = np.where(np.max(zscore_windowed[i,lowcut:,:], axis=1) > 1.65)[0][0] 
+                print('\t\tLower threshold used', gesture, i)
+            except:
+                print('\t\tCould not find a large event' , gesture, i)
+                continue
+
+        # new index relative to the start index from this iteration        
+        new_index = start + lowcut + large_event 
+        shift = new_index - index # how much it shifts
+        shifts[i] = shift
+        
+        startl = int(lowcut+large_event+trim_window[0]) #shifted indices
+        stopl = int(lowcut+large_event+trim_window[1])
+        try:
+            # emg value, shifted, 0 is first large muscle movement around prompt time
+            emg_trimmed[i,:,:] = emg_windowed[i,startl:stopl,:] 
+            # zscore, shifted, 0 is first large muscle movement around prompt time
+            zscore_trimmed[i,:,:] = zscore_windowed[i,startl:stopl,:] 
+        except Exception as e:
+            print('\t\t\tEvent at end of the windowed area' , gesture, i)
+            endofwindow = emg_windowed[i,startl:stopl,:].shape[0]
+            emg_trimmed[i,:endofwindow,:] = emg_windowed[i,startl:stopl,:]
+            zscore_trimmed[i,:endofwindow,:] = zscore_windowed[i,startl:stopl,:]
+
+    if save:
+        fig, axs = plt.subplots(1,2 , figsize=(2.5,2.5))
+        # time oif view window, with 0 at the event
+        time_rel = np.arange(trim_window[0], trim_window[1])/sample_rate 
+        for i in range(16):
+            channelmean = np.nanmean(emg_trimmed[:,:,i], axis=0)
+            channelstd = np.nanstd(emg_trimmed[:,:,i], axis=0)
+            axs[0].plot(time_rel, channelmean+i*100, color='k')
+            axs[0].fill_between(time_rel, channelmean-channelstd+i*100, channelmean+channelstd+i*100, color=(0,i/16,1))
+            channelmean = np.nanmean(zscore_trimmed[:,:,i], axis=0)
+            channelstd = np.nanstd(zscore_trimmed[:,:,i], axis=0)
+            axs[1].plot(time_rel, channelmean+i*10, color='k')
+            axs[1].fill_between(time_rel, channelmean-channelstd+i*10, channelmean+channelstd+i*10, color=(1,0,i/16))
+        axs[0].set_title('zscore')    
+        axs[0].set_yticks(np.arange(16)*100)   
+        axs[0].set_yticklabels(np.arange(16))   
+        axs[0].set_ylabel('channel') 
+        axs[0].set_xticks([0,0.05,0.1])    
+        axs[0].set_xlabel('time(s)')
+
+        axs[1].set_title('EMG')    
+        axs[1].set_yticks(np.arange(16)*10)   
+        axs[1].set_yticklabels([])   
+        axs[1].set_xlabel('time(s)')
+        axs[1].set_xticks([0,0.05,0.1])    
+        # axs[1].set_yticklabels(np.arange(16))   
+        # plt.tight_layout()
+        plt.savefig(os.path.join(savedir, '{0}-{1}.png'.format(gesture, file[-25:-5])))
+        if show:
+            plt.show()
+        else:
+            plt.close()
+        
+    return emg_trimmed, zscore_trimmed, shifts
+
+
+if __name__ == '__main__':
+
+    import argparse
+    import time
+    import datetime
+
+    # Argument Parsing
+    # -----------------------------------------------
+    ap = argparse.ArgumentParser()
+    ap.add_argument('-i', '--input_directory', type = str,
+        required = True, 
+        help = 'path to the director of .hdf5 files')
+    ap.add_argument('-sf', '--savefig', action='store_true',
+        default=False,
+        help='Boolean indicating that figures will be saved')
+    ap.add_argument('-f', '--fps', type = int,
+        default=2000,  
+        help = 'frames per second for data collection')
+    args = vars(ap.parse_args())
+
+    DATA_FOLDER = args['input_directory']
+    savefig = args['savefig']
+    fps = args['fps']
+
+    corpus_csv = os.path.expanduser(os.path.join(DATA_FOLDER, "discrete_gestures_corpus.csv"))
+    corpus_df = pd.read_csv(corpus_csv)    
+
+    files = get_task_dataset_paths("discrete_gestures")
+
+    sample_rate = 2000
+    trim_window = np.array([-0.01,0.1])
+    window_size = np.array([-1,1])
+
+    # set seed here to ensure all data is the same between computers
+    np.random.seed(112617)
+
+    for file in files:
+
+        basename = os.path.basename(file)  # Get just the filename (not the full path)
+        print(f"Processing new file: {basename}")  # Print when starting a new file
+        
+        parts = basename.split('_')
+        user_number = parts[3]  # Extract user_number from filename
+        dataset_number = parts[5].split('.')[0]  # Extract dataset_number from filename
+        
+        # Find the matching row in the ground truth csv for this file
+        gt_row = corpus_df[
+            (corpus_df['user_number'].astype(str).str.zfill(3) == user_number) &
+            (corpus_df['dataset_number'].astype(str).str.zfill(3) == dataset_number)
+        ]
+        gt_row = gt_row.iloc[0]  # Get the first (and only) matching row
+        start, end, split = gt_row['start'], gt_row['end'], gt_row['split']
+        
+        # We'll load the file using the `load_data` utility function.
+        # Load the EMG data and associated info from single .hdf5 file
+        data = load_data(file)
+        emg = data.emg         # EMG signal, shape: (n_samples, 16)
+        time = data.time       # Timestamps for each sample
+        prompts = data.prompts # Dataframe of gesture events (name, time)
+        stages = data.stages   # Dataframe of stage events (start, end, name)
+        
+        gesture_labels = get_gesture_prompt_times(prompts, time)
+        all_gestures = np.unique(gesture_labels)
+                
+        for gesture in all_gestures:
+            if gesture == '': # skip empty gestures
+                continue
+        
+            test = False
+            gest_indices = np.where(gesture_labels == gesture)[0] # find index of these gestures
+            # print(stage_labels[gest_indices])
+            print('\t', gesture)
+
+
+            # set up data splitting here
+
+
+
+
+
+
+
+            # process data splits separately
+            if savefig:
+                emg_trimmed, zscore_trimmed, shifts = get_large_event_array(emg, 
+                                               gesture_name=gesture, 
+                                               gest_indices=gest_indices, 
+                                               sample_rate=fps, 
+                                               lowend = -0.05,
+                                               window_size=window_size, 
+                                               trim_window=trim_window,
+                                               show=False,
+                                               savedir=DATA_FOLDER,
+                                               file=file)
+            else:
+                emg_trimmed, zscore_trimmed, shifts = get_large_event_array(emg, 
+                                               gesture_name=gesture, 
+                                               gest_indices=gest_indices, 
+                                               sample_rate=2000, 
+                                               lowend = -0.05,
+                                               window_size=window_size, 
+                                               trim_window=trim_window,
+                                               show=False,
+                                               savedir=None,
+                                               file=file)
+            
+            # Extract feature here
+
+
+
+
+
