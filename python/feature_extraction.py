@@ -397,10 +397,10 @@ if __name__ == '__main__':
         gesture_labels, n_gestures = get_gesture_prompt_times(prompts, time)
         print('\t Getting stages')
 
-        # stage_labels = get_gesture_stage_times(stages, time)
+        stage_labels = get_gesture_stage_times(stages, time)
 
         all_gestures = np.unique(gesture_labels)
-        # all_stages = stage_labels[all_gestures]
+        all_stages = stage_labels[all_gestures]
 
 
 
@@ -450,9 +450,7 @@ if __name__ == '__main__':
             current_indices = np.arange(total_gestures-gesture_n, total_gestures).astype(int)
 
             current_DF.loc[current_indices, ['gesture']] = gesture
-            # current_DF.loc[current_indices, ['stage']] =  stage_labels[gest_indices]
-
-        
+            current_DF.loc[current_indices, ['stage']] =  stage_labels[gest_indices]
             current_DF.loc[current_indices, ['user']] = user_number
 
             # process data splits separately
