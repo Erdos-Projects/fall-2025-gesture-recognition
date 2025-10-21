@@ -20,6 +20,8 @@ import sys
 import pandas as pd
 import numpy as np
 
+from scipy.fft import fft, fftfreq
+
 from datetime import datetime
 import matplotlib.pyplot as plt
 
@@ -31,7 +33,7 @@ from generic_neuromotor_interface.explore_data.load import load_data
 def get_task_dataset_paths(task: str) -> list[str]:
     # Only return files that contain the task name in their filename
 
-    folder = os.path.expanduser(DATA_FOLDER)
+    folder = os.path.expanduser(task)
     datasets = glob.glob(os.path.join(folder, '*.hdf5'))
     
     return [d for d in datasets if task in d]
@@ -50,6 +52,8 @@ def get_gesture_prompt_times(prompts,
        stage_labels: 1D array with gesture in time of when prompts were given
     '''
     gesture_labels = np.full_like(timestamps, '', dtype=object)
+    n_gestures = 0
+
     if not prompts.empty:
         prompt_times = prompts['time'].values
         prompt_names = prompts['name'].values
@@ -60,8 +64,8 @@ def get_gesture_prompt_times(prompts,
                 prompt_idx += 1
             if prompt_times[prompt_idx] == t:
                 gesture_labels[i] = prompt_names[prompt_idx]
-
-    return gesture_labels
+                n_gestures += 1
+    return gesture_labels, n_gestures
 
 def get_gesture_stage_times(stages,
                              timestamps):
@@ -170,9 +174,9 @@ def get_large_event_array(emg: np.array,
             try:
                 # else first event that reaches a zscore of 1.65, alpha=0.05
                 large_event = np.where(np.max(zscore_windowed[i,lowcut:,:], axis=1) > 1.65)[0][0] 
-                print('\t\tLower threshold used', gesture, i)
+                print('\t\t\tLower threshold used', gesture, i)
             except:
-                print('\t\tCould not find a large event' , gesture, i)
+                print('\t\t\tCould not find a large event' , gesture, i)
                 continue
 
         # new index relative to the start index from this iteration        
@@ -225,8 +229,112 @@ def get_large_event_array(emg: np.array,
             plt.show()
         else:
             plt.close()
-        
+
     return emg_trimmed, zscore_trimmed, shifts
+
+
+def fft_windowed(timeseries, sample_rate, hanning=True, show=False):
+
+    '''
+    Takes timeseries data to output frequency characteristics
+    
+    Arguments:
+        timeseries: emg data
+        sample_rate: sample rate of emg data
+        hanning: boolean to apply hanning window
+        show: show the fft, 
+
+    Returns:
+        highfreq: highest power frequency 
+        maxpower: power at highfreq 
+        freq_range: list 2 values, half max full width of fourier frequencies
+    '''
+
+    if hanning:
+        hanwin = np.hanning(timeseries.shape[0])
+        signal = timeseries * hanwin
+    else:
+        signal = timeseries
+    fourier_signal = np.convolve(np.abs(fft(signal)), np.ones(10)/10, mode='same')
+    freq = fftfreq(len(signal), d=1/sample_rate)
+    fourier_signal = fourier_signal[freq>0]
+    freq = freq[freq>0]
+    
+        
+    maxarg = np.argmax(fourier_signal)
+    maxpower = fourier_signal[maxarg]
+    highfreq = freq[maxarg]
+    mphw = np.where(fourier_signal > maxpower/2)[0]
+    
+    ranges = [[]]
+    for val in mphw:
+        if not ranges[-1] or ranges[-1][-1] == val-1:
+            ranges[-1].append(val)
+        else:
+            ranges.append([val])
+            
+    if len(ranges) > 1:
+        biggest = 0
+        for r, ran in enumerate(ranges):
+            if (ran[0] < highfreq) & (ran[-1] > highfreq):
+                ranges = [ran]
+                break
+
+    freq_range = freq[[ranges[0][0], ranges[0][-1]]]
+
+    if show:
+        plt.plot(freq, fourier_signal, color='k', label='FFT')
+        plt.scatter(highfreq, maxpower, color='red', label='Max')
+        plt.hlines(maxpower/2, freq_range[0], freq_range[1], color='blue', label='range')
+        plt.legend()
+        plt.xlabel('freq')
+        plt.ylabel('power')
+        plt.show()
+
+    return highfreq, maxpower, freq_range
+    
+
+def get_threshold_events(timeseries, threshold):
+
+    '''
+    Takes timeseries data and outputs the number times it goes above this value
+    continuous indices only get counted once
+    
+    Arguments:
+        timeseries: emg data
+        threshold: threshold to count events, those above get counted
+
+    Returns:
+        ranges = list of list of indices when its above the threshold
+    '''
+
+
+    indices = np.where(timeseries > threshold)[0]
+    if len(indices) > 0:
+        ranges = [[]]
+        for val in indices:
+            if not ranges[-1] or ranges[-1][-1] == val-1:
+                ranges[-1].append(val)
+            else:
+                ranges.append([val])
+    else:
+        ranges = None
+    return ranges
+
+def column_names(name, n_channel):
+    '''
+    Takes name and produces column names across n channels
+    
+    Arguments:
+        name: attribute name
+        nchannels: number of channels
+
+    Returns:
+        column attribute with channel number
+    '''
+    columns = []
+    for i in range(n_channel): columns.append("ch{0}_{1}".format(str(i).zfill(2), name))
+    return columns
 
 
 if __name__ == '__main__':
@@ -247,40 +355,35 @@ if __name__ == '__main__':
     ap.add_argument('-f', '--fps', type = int,
         default=2000,  
         help = 'frames per second for data collection')
+    ap.add_argument('-s', '--split', type = str,
+        default='peronsal',  
+        help = '"peronsal" or "universal" split')
     args = vars(ap.parse_args())
 
-    DATA_FOLDER = args['input_directory']
-    savefig = args['savefig']
-    fps = args['fps']
-
-    corpus_csv = os.path.expanduser(os.path.join(DATA_FOLDER, "discrete_gestures_corpus.csv"))
-    corpus_df = pd.read_csv(corpus_csv)    
-
-    files = get_task_dataset_paths("discrete_gestures")
-
-    sample_rate = 2000
-    trim_window = np.array([-0.01,0.1])
-    window_size = np.array([-1,1])
 
     # set seed here to ensure all data is the same between computers
     np.random.seed(112617)
 
-    for file in files:
+    DATA_FOLDER = args['input_directory']
+    savefig = args['savefig']
+    fps = args['fps']
+    split = args['split']
+    # assert (split=='universal') | (split=='personal') 'Split needs to be defined as either "universal" or "personal" '
+
+    files = get_task_dataset_paths(DATA_FOLDER)
+
+    # hardcoded features 
+    sample_rate = 2000
+    trim_window = np.array([-0.01,0.1])
+    window_size = np.array([-1,1])
+
+    for f, file in enumerate(files):
 
         basename = os.path.basename(file)  # Get just the filename (not the full path)
-        print(f"Processing new file: {basename}")  # Print when starting a new file
+        print(f"\nProcessing new file: {basename}")  # Print when starting a new file
         
         parts = basename.split('_')
         user_number = parts[3]  # Extract user_number from filename
-        dataset_number = parts[5].split('.')[0]  # Extract dataset_number from filename
-        
-        # Find the matching row in the ground truth csv for this file
-        gt_row = corpus_df[
-            (corpus_df['user_number'].astype(str).str.zfill(3) == user_number) &
-            (corpus_df['dataset_number'].astype(str).str.zfill(3) == dataset_number)
-        ]
-        gt_row = gt_row.iloc[0]  # Get the first (and only) matching row
-        start, end, split = gt_row['start'], gt_row['end'], gt_row['split']
         
         # We'll load the file using the `load_data` utility function.
         # Load the EMG data and associated info from single .hdf5 file
@@ -290,26 +393,69 @@ if __name__ == '__main__':
         prompts = data.prompts # Dataframe of gesture events (name, time)
         stages = data.stages   # Dataframe of stage events (start, end, name)
         
-        gesture_labels = get_gesture_prompt_times(prompts, time)
+        n_samples, n_channels = emg.shape
+
+        print('\t Getting gestures')
+        gesture_labels, n_gestures = get_gesture_prompt_times(prompts, time)
+        print('\t Getting stages')
+
+        # stage_labels = get_gesture_stage_times(stages, time)
+
         all_gestures = np.unique(gesture_labels)
-                
+        # all_stages = stage_labels[all_gestures]
+
+
+
+        #set up columns
+        rms_list = column_names('rms', n_channels)
+        maxabs_list = column_names('maxabs', n_channels)
+        mav_list = column_names('mav', n_channels)
+
+        peak_freq_list = column_names('fft-peakfreq', n_channels)
+        max_power_list = column_names('fft-maxpower', n_channels)
+        high_freq_list = column_names('fft-highfreq', n_channels)
+        low_freq_list = column_names('fft-lowfreq', n_channels)
+        halfwidth_list = column_names('fft-halfwidth', n_channels)
+
+        thresh3_list = column_names('thresh3-events', n_channels)
+        thresh2_list = column_names('thresh2-events', n_channels)
+
+        full_list = ['index']
+        full_list.extend(rms_list)         
+        full_list.extend(maxabs_list)         
+        full_list.extend(mav_list)         
+        full_list.extend(peak_freq_list)         
+        full_list.extend(max_power_list)         
+        full_list.extend(high_freq_list)         
+        full_list.extend(low_freq_list)         
+        full_list.extend(halfwidth_list)         
+        full_list.extend(thresh3_list)  
+        full_list.extend(thresh2_list)
+
+
+        current_DF = pd.DataFrame(np.zeros((n_gestures, len(full_list)))*np.nan, columns=full_list)
+        current_DF.set_index('index')
+
+
+        total_gestures = 0
         for gesture in all_gestures:
             if gesture == '': # skip empty gestures
                 continue
-        
-            test = False
+            print('\t\t', gesture)
+
             gest_indices = np.where(gesture_labels == gesture)[0] # find index of these gestures
             # print(stage_labels[gest_indices])
-            print('\t', gesture)
 
+            gesture_n = len(gest_indices)
+            total_gestures += gesture_n
 
-            # set up data splitting here
+            current_indices = np.arange(total_gestures-gesture_n, total_gestures).astype(int)
 
+            current_DF.loc[current_indices, ['gesture']] = gesture
+            # current_DF.loc[current_indices, ['stage']] =  stage_labels[gest_indices]
 
-
-
-
-
+        
+            current_DF.loc[current_indices, ['user']] = user_number
 
             # process data splits separately
             if savefig:
@@ -336,8 +482,67 @@ if __name__ == '__main__':
                                                file=file)
             
             # Extract feature here
+            
+            # --- Find the correct metadata row for this event ---
+            # Each event should fall within a start/end interval in the metadata
+            
+            rms_emg = np.sqrt(np.mean(emg_trimmed ** 2, axis=1))  # Root Mean Square
+            maxabs_emg = np.max(np.abs(emg_trimmed), axis=1)  # Root Mean Square
+            mav_emg = np.mean(np.abs(emg_trimmed), axis=1)
 
 
+            rms_list = column_names('rms', n_channels)
+            maxabs_list = column_names('maxabs', n_channels)
+            mav_list = column_names('mav', n_channels)
+
+            peak_freq_list = column_names('fft-peakfreq', n_channels)
+            max_power_list = column_names('fft-maxpower', n_channels)
+            high_freq_list = column_names('fft-highfreq', n_channels)
+            low_freq_list = column_names('fft-lowfreq', n_channels)
+            halfwidth_list = column_names('fft-halfwidth', n_channels)
+
+            thresh3_list = column_names('thresh3-events', n_channels)
+            thresh2_list = column_names('thresh2-events', n_channels)
+
+            for t, curr in enumerate(current_indices):
+                curr = int(curr)
+                
+                for i in range(16):
+                    ranges = get_threshold_events(zscore_trimmed[t,:,i], threshold=3)
+                    if ranges != None:
+                        current_DF.loc[curr, [thresh3_list[i]]] = len(ranges)
+                    else:
+                        current_DF.loc[curr, [thresh3_list[i]]] = 0
+
+                    ranges = get_threshold_events(zscore_trimmed[t,:,i], threshold=2)
+                    if ranges != None:
+                        current_DF.loc[curr, [thresh2_list[i]]] = len(ranges)
+                    else:
+                        current_DF.loc[curr, [thresh2_list[i]]] = 0
+                    try:
+                        highfreq, maxpower, freq_range = fft_windowed(emg_trimmed[t,:,i], sample_rate=2000, hanning=True)
+                    except:
+                        print('\t\t\t\tCould not find fft information for index {0}, channel {1}'.format(t, i))
+                        highfreq = np.nan
+                        maxpower = np.nan
+                        freq_range = [np.nan, np.nan]
+
+                    current_DF.loc[curr, rms_list[i]] = rms_emg[t, i]
+                    current_DF.loc[curr, maxabs_list[i]] = maxabs_emg[t, i]
+                    current_DF.loc[curr, mav_list[i]] = mav_emg[t, i]
+
+                    current_DF.loc[curr, peak_freq_list[i]] = highfreq
+                    current_DF.loc[curr, max_power_list[i]] = maxpower
+                    current_DF.loc[curr, high_freq_list[i]] = freq_range[1]
+                    current_DF.loc[curr, low_freq_list[i]] = freq_range[0]
+                    current_DF.loc[curr, halfwidth_list[i]] = np.diff(freq_range)
+
+        if f == 0:
+            final_df = current_DF
+        else:
+            final_df = pd.concat([final_df, current_DF])
+
+    final_df.to_csv(os.path.join(DATA_FOLDER, 'features_emg_data.csv'))
 
 
 
