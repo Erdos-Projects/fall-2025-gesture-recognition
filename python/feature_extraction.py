@@ -73,21 +73,19 @@ def get_gesture_stage_times(stages,
     gets times each different stage was used
 
     Arguments:
-        stages: stage information
+        stages: stage information in dataframe with 'start', 'end', 'name' columns
         timestamps: timestamps from experiment
 
     Returns:
        stage_labels: 1D array with stage in place of when it was used
     '''
 
-    stage_labels = np.full_like(time, '', dtype=object)
     if not stages.empty:
-        # For each sample, check if it falls within any stage interval
-        for i, t in enumerate(time):
-            for _, row in stages.iterrows():
-                if row['start'] <= t <= row['end']:
-                    stage_labels[i] = row['name']
-                    break
+        #for each timestamp check if it belongs to each stage
+        conditions = [np.logical_and((stages.start[i] <= timestamps),(stages.end[i] >= timestamps)) for i in range(len(stages))]
+        choices = stages.name
+        #for each timestamp select the corresponding stage name
+        stage_labels = np.select(conditions,choices)
 
     return stage_labels
 
