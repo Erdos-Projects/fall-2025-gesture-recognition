@@ -395,14 +395,11 @@ if __name__ == '__main__':
 
         print('\t Getting gestures')
         gesture_labels, n_gestures = get_gesture_prompt_times(prompts, time)
+        print('\t\t Found {} gestures'.format(n_gestures))
         print('\t Getting stages')
-
         stage_labels = get_gesture_stage_times(stages, time)
 
         all_gestures = np.unique(gesture_labels)
-        all_stages = stage_labels[all_gestures]
-
-
 
         #set up columns
         rms_list = column_names('rms', n_channels)
@@ -418,7 +415,7 @@ if __name__ == '__main__':
         thresh3_list = column_names('thresh3-events', n_channels)
         thresh2_list = column_names('thresh2-events', n_channels)
 
-        full_list = ['index']
+        full_list = []
         full_list.extend(rms_list)         
         full_list.extend(maxabs_list)         
         full_list.extend(mav_list)         
@@ -430,9 +427,8 @@ if __name__ == '__main__':
         full_list.extend(thresh3_list)  
         full_list.extend(thresh2_list)
 
-
+        # set up current DataFrame for this participant
         current_DF = pd.DataFrame(np.zeros((n_gestures, len(full_list)))*np.nan, columns=full_list)
-        current_DF.set_index('index')
 
 
         total_gestures = 0
@@ -486,20 +482,6 @@ if __name__ == '__main__':
             maxabs_emg = np.max(np.abs(emg_trimmed), axis=1)  # Root Mean Square
             mav_emg = np.mean(np.abs(emg_trimmed), axis=1)
 
-
-            rms_list = column_names('rms', n_channels)
-            maxabs_list = column_names('maxabs', n_channels)
-            mav_list = column_names('mav', n_channels)
-
-            peak_freq_list = column_names('fft-peakfreq', n_channels)
-            max_power_list = column_names('fft-maxpower', n_channels)
-            high_freq_list = column_names('fft-highfreq', n_channels)
-            low_freq_list = column_names('fft-lowfreq', n_channels)
-            halfwidth_list = column_names('fft-halfwidth', n_channels)
-
-            thresh3_list = column_names('thresh3-events', n_channels)
-            thresh2_list = column_names('thresh2-events', n_channels)
-
             for t, curr in enumerate(current_indices):
                 curr = int(curr)
                 
@@ -532,7 +514,8 @@ if __name__ == '__main__':
                     current_DF.loc[curr, high_freq_list[i]] = freq_range[1]
                     current_DF.loc[curr, low_freq_list[i]] = freq_range[0]
                     current_DF.loc[curr, halfwidth_list[i]] = np.diff(freq_range)
-
+        print("Processed {} gestures".format(total_gestures))
+        #Concatenate all partipants             
         if f == 0:
             final_df = current_DF
         else:
