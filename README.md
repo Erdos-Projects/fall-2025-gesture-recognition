@@ -12,6 +12,26 @@ Implementing and evaluating personalized models for discrete hand gesture classi
 * **Secondary KPIs:** Classification accuracy, classification error rate
 * **Evaluation Strategy:** Performance was measured using within-user cross-validation (CV) and confirmed on a final, untouched test holdout set
 
+## Quick Start
+
+**1. Setup & data (from the [`generic-neuromotor-interface`](https://github.com/facebookresearch/generic-neuromotor-interface?tab=readme-ov-file#setup) repo):**
+```bash
+git clone https://github.com/facebookresearch/generic-neuromotor-interface.git
+cd generic-neuromotor-interface
+conda env create -f environment.yml
+conda activate neuromotor
+pip install -e .
+python -m generic_neuromotor_interface.scripts.download_data --task discrete_gestures --output-dir ~/emg_data
+```
+
+**2. Extract features:**
+```bash
+cd fall-2025-gesture-recognition/python
+python feature_extraction.py -i ~/emg_data
+```
+
+**3. Run pipeline:** Execute notebooks (detailed below) in order: `eda.ipynb` → `feature_selection.ipynb` → `modeling_experiments.ipynb` → `final_results.ipynb`
+
 ## Project Deliverables and Final Results
 
 | Deliverable | Description |
