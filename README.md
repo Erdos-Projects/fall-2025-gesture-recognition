@@ -4,31 +4,33 @@
 
 **Erdős Institute Data Science Boot Camp Fall 2025 Project**
 
-Implementing and evaluating personalized models for discrete hand gesture classification from surface electromyography (sEMG) signals, focusing on achieving robust performance for individual users. Personalization is a critical aspect, as surface electromyography (sEMG) signals exhibit high inter-user variability, such that models are evaluated on the same user's unseen data. The project utilizes the `discrete_gestures` in the `generic-neuromotor-interface` dataset to support robust wearable device design.
+Implementing and evaluating personalized models for discrete hand gesture classification from surface electromyography (sEMG) signals. Our core methodology addresses the necessity of achieving robust within-user generalization (evaluation on the same user's unseen data) due to the high inter-user signal variability inherent in sEMG signatures. The project utilizes the `discrete_gestures` in the `generic-neuromotor-interface` dataset ([Kaifosh et al. 2025](https://doi.org/10.1038/s41586-025-09255-w)) to support robust wearable device design.
 
-## Project Status and Deliverables
+## Key Performance Indicators (KPIs)
 
-### Data Acquisition and Preparation
+* **Primary KPI:** F1 Macro score, to maximize classification performance across all nine discrete gesture classes, robustly addressing challenges posed by multi-class classification and potential class imbalance stemming from gesture/stage combinations with low counts.
+* **Secondary KPIs:** Classification accuracy, classification error rate
+* **Evaluation Strategy:** Performance was measured using within-user cross-validation (CV) and confirmed on a final, untouched test holdout set
 
-- [x] Data gathering and Key Performance Indicator (KPI): primary KPI is F1 Macro due to multi-class classification.
-- [x] Raw sEMG data for 100 participants successfully loaded and preprocessed.
-- [x] Data cleaning and alignment strategy finalized, including Z-score normalization applied separately to each of the 16 EMG channels.
+## Project Deliverables and Final Results
 
-### Feature Engineering and Selection
+| Deliverable | Description |
+| :--- | :--- |
+| Problem Definition & KPIs | Project guiding question, stakeholders, and KPI definitions finalized (`kpis.md`) |
+| Data Acquisition & Preparation | Raw sEMG data for 100 participants successfully loaded. Data cleaned, aligned (event-based peak detection), and preprocessed using Z-score normalization applied separately to each of the 16 EMG channels |
+| Evaluation Plan | Personalized split implemented using stratified 80/20 K-Fold per user (within-user CV) to ensure evaluation mirrors deployment scenarios |
+| Feature Engineering | Feature extraction yielded 160 features. Feature selection (by random forest ranking and correlation pruning) successfully reduced the feature space to 37 non-redundant metrics. Key features included RMS metrics, concentrated heavily on sEMG channels ch05, ch04, and ch10. |
+| Modeling & Validation | Evaluated trivial, linear (Logistic Regression), and tree-based models (random forest, XGBoost). Final model selected: **Logistic Regression with L2 regularization (Logit\_L2)** due to robust CV performance and interpretability. |
+| Final Results | **Strong within-user generalization** achieved on calibration data splits (CV Mean F1 Macro $\approx \mathbf{0.7164}$). **Poor generalization to unseen gestures** (Holdout Test F1 Macro $\approx \mathbf{0.3977}$), confirming significant performance heterogeneity across users. Error analysis revealed systematic confusion, particularly between specific finger release gestures and directional thumb movements. |
+| Final Documentation | Executive summary (`summary.pdf`) and presentation slide deck (`presentation/`) finalized and stored. |
 
-- [x] Exploratory data analysis (EDA) performed, generating a data audit summary.
-- [x] Feature extraction pipeline implemented, extracting 160 features (10 features across 16 channels): features include root mean square (RMS), mean absolute value (MAV), and frequency-based metrics (e.g., median frequency).
-- [x] Dimension reduction analysis performed (PCA and t-SNE) showing feature separation.
-- [x] Feature selection complete, resulting in a smaller final feature set (e.g., 11 features selected for experiments), with channels ch05, ch04, ch06, ch03, and ch10 identified as high priority.
+## Repository Structure Overview
 
-### Modeling and Evaluation
-
-- [x] Personalized cross-validation split strategy defined and implemented: Stratified K-Fold per user to ensure evaluation mirrors deployment scenarios where a model generalizes within a single user.
-- [ ] Baseline modeling implemented in `notebooks/baseline.ipynb`, including linear models (Logistic Regression L2) evaluated using cross-validation.
-- [x] Complex models explored (RandomForest, XGBoost) in initial experiments.
-- [x] Log cross-validation scores to comparison table (`model_comparison.csv`).
-- [ ] Implement final chosen model execution/evaluation logic on the untouched test holdout set.
-- [ ] Finalize executive summary (`summary.md`) and presentation slide deck (re: problem, data sources, KPIs, and results).
+| Directory | Key Files/Artifacts | Purpose |
+| :--- | :--- | :--- |
+| `deliverables/` | `summary.pdf`<br>`kpis.md`<br>`evaluation_plan.md`<br>`modeling_plan.md` | Written conceptual documentation deliverables |
+| `results/` | `feature_selection.csv`<br>`model_comparison.csv` | Logs of feature elimination decisions and cross-validation KPI scores |
+| `notebooks/` | `eda.ipynb`<br>`feature_selection.ipynb`<br>`modeling_experiments.ipynb`<br>`final_results.ipynb` | Exploratory analysis, modeling experiments, and final results evaluation |
 
 ## References
 
