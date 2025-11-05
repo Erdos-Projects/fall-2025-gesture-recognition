@@ -23,6 +23,7 @@ conda activate neuromotor
 pip install -e .
 python -m generic_neuromotor_interface.scripts.download_data --task discrete_gestures --output-dir ~/emg_data
 ```
+**Note:** The EMG data contains 101 files (100 users' recordings + metadata) totaling approximately *33.36 GB*.
 
 **2. Extract features:**
 ```bash
